@@ -34,52 +34,66 @@ app.get('/confirmation/:token', async (req, res) => {
 });
 
 app.post('/rsvp', (req, res) => {
-    try {
-        const email = req.body.email?.toString();
-        console.log(email);
+    if (!req.body.captcha) {
+        console.log("err");
+        return res.json({ "success": false, "msg": "Capctha is not checked" });
 
-        let transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 465,
-            secure: true,
-            auth: {
-                user: process.env.EMAIL,
-                pass: process.env.PASSWORD
-            },
-            //to enable localhost for now
-            tls: {
-                rejectUnauthorized: false
+    } else {
+        const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${req.body.captcha}`;
+        request(verifyUrl, (err, response, body) => {
+            if (err) { console.log(err); }
+            body = JSON.parse(body);
+            if (!body.success && body.success === undefined) {
+                return res.json({ "success": false, "msg": "captcha verification failed" });
             }
-        });
+            else if (body.score < 0.5) {
+                return res.json({ "success": false, "msg": "you might be a bot, sorry!", "score": body.score });
+            }
+            try {
+                const email = req.body.email?.toString();
+                console.log(email);
 
-
-        jwt.sign({ email: email }, process.env.JWTSECRET, { expiresIn: '1d' }, (err, token) => {
-            if (!err) {
-                res.json({
-                    token: token
-                });
-                let mailOptions = {
-                    from: '"ACM-VIT Summer Bootcamp" <your@email.com>', // sender address
-                    to: email, // list of receivers
-                    subject: 'Email Confirmation', // Subject line
-                    text: `Follow this link to confirm your email <br>
-                    <a href="http://localhost:3000/confirmation/${token}">Click here to Verify Email</a>`, // plain text body
-                    //html: output // html body
-                };
-                transporter.sendMail(mailOptions, (error, info) => {
-                    if (error) {
-                        return console.log(error);
+                let transporter = nodemailer.createTransport({
+                    host: 'smtp.gmail.com',
+                    port: 465,
+                    secure: true,
+                    auth: {
+                        user: process.env.EMAIL,
+                        pass: process.env.PASSWORD
+                    },
+                    tls: {
+                        rejectUnauthorized: false
                     }
-                    console.log('Message sent: %s', info.messageId);
                 });
+                jwt.sign({ email: email }, process.env.JWTSECRET, { expiresIn: '1d' }, (err, token) => {
+                    if (!err) {
+                        res.json({
+                            token: token
+                        });
+                        let mailOptions = {
+                            from: '"ACM-VIT Summer Bootcamp" <your@email.com>',
+                            to: email,
+                            subject: 'Email Confirmation',
+                            text: `Token: ${token}`,
+                            //html: output // html body
+                        };
+                        transporter.sendMail(mailOptions, (error, info) => {
+                            if (error) {
+                                return console.log(error);
+                            }
+                            console.log('Message sent: %s', info.messageId);
+                        });
+                    }
+                });
+            } catch (e) {
+                res.status(500).send(e);
+                console.log(e)
             }
-        });
-    } catch (e) {
-        res.status(500).send(e);
-        console.log(e)
+
+        })
     }
 })
 
 app.listen(process.env.PORT, () => {
-    console.log(`Server Started on port ${process.env.PORT}`);
+    console.log(`Server Started on port ${process.env.PORT}`)
 })
