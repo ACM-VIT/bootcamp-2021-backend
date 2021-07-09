@@ -1,15 +1,16 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
 const bodyParser = require('body-parser');
-const nodemailer = require('nodemailer');
 const path = require('path');
 const winston = require('winston');
+const cors = require('cors')
 require('dotenv').config();
 
 const Email = require('./models/emails');
+const { default: axios } = require('axios');
 
 const app = express();
+app.use(cors());
 
 mongoose.connect(process.env.MONGO, {
   useNewUrlParser: true,
@@ -32,13 +33,15 @@ const logger = winston.createLogger({
   ],
 });
 
+const secretKey = process.env.CAPTCHA;
+
 app.post('/rsvp', (req, res) => {
   if (!req.body.captcha) {
     logger.error(`Captcha wasn't supplied in body`);
     res.json({ success: false, msg: 'Capctha is not checked' });
   }
   const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${req.body.captcha}`;
-  request(verifyUrl, (err, response, body) => {
+  axios.get(verifyUrl,async (err, response, body) => {
     if (err) {
       logger.error(`Error During Captcha: ${err}`);
     }
@@ -66,5 +69,5 @@ app.post('/rsvp', (req, res) => {
 });
 
 app.listen(process.env.PORT, () => {
-  console.log(`Server Started on port ${process.env.PORT}`);
+  logger.info(`Server Started on port ${process.env.PORT}`);
 });
