@@ -4,7 +4,8 @@
   "description": "ACM-VIT Bootcamp 2021 Backend",
   "main": "index.js",
   "scripts": {
-    "start": "nodemon index.js",
+    "start:dev": "nodemon index.js",
+    "start:prod": "node indiex.js",
     "newlog": "mv error.log error_backup.log && touch error.log",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
