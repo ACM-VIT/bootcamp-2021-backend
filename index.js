@@ -3,6 +3,8 @@ const mongoose = require('mongoose');
 const jwt = require('jsonwebtoken');
 const bodyParser = require('body-parser');
 const nodemailer = require('nodemailer');
+const path = require('path');
+const winston = require('winston');
 require('dotenv').config();
 
 const Email = require('./models/emails');
@@ -12,88 +14,82 @@ const app = express();
 mongoose.connect(process.env.MONGO, { useNewUrlParser: true, useUnifiedTopology: true, useCreateIndex: true });
 mongoose.Promise = global.Promise;
 
-// parse application/x-www-form-urlencoded aka your HTML <form> tag stuff
 app.use(bodyParser.urlencoded({ extended: false }))
-// parse application/json aka whatever you send as a json object
 app.use(bodyParser.json())
+
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.printf(info => `${info.message}`),
+    transports: [
+      new winston.transports.File({
+        filename: path.join(__dirname, 'error.log'),
+        level: 'info'
+      })
+    ]
+  });
 
 app.get('/confirmation/:token', async (req, res) => {
     try {
         console.log(req.params.token);
         const data = jwt.verify(req.params.token, process.env.JWTSECRET);
-        console.log(data);
+        logger.info(`Data during confirmation: ${JSON.stringify(data)}`);
         const email = data.email;
         await Email.create({
             email
         })
-        res.send("Success!");
+        res.json({"msg":"Email Successfully Added"});
     } catch (e) {
         res.send('error');
-        console.log(e);
+        logger.error(e);
     }
 });
 
 app.post('/rsvp', (req, res) => {
-    if (!req.body.captcha) {
-        console.log("err");
-        return res.json({ "success": false, "msg": "Capctha is not checked" });
+    try {
+        const email = req.body.email?.toString();
+        logger.info(`Email sent through body: ${email}`);
 
-    } else {
-        const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${req.body.captcha}`;
-        request(verifyUrl, (err, response, body) => {
-            if (err) { console.log(err); }
-            body = JSON.parse(body);
-            if (!body.success && body.success === undefined) {
-                return res.json({ "success": false, "msg": "captcha verification failed" });
+        let transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 465,
+            secure: true,
+            auth: {
+                user: process.env.EMAIL,
+                pass: process.env.PASSWORD
+            },
+            //to enable localhost for now
+            tls: {
+                rejectUnauthorized: false
             }
-            else if (body.score < 0.5) {
-                return res.json({ "success": false, "msg": "you might be a bot, sorry!", "score": body.score });
-            }
-            try {
-                const email = req.body.email?.toString();
-                console.log(email);
+        });
 
-                let transporter = nodemailer.createTransport({
-                    host: 'smtp.gmail.com',
-                    port: 465,
-                    secure: true,
-                    auth: {
-                        user: process.env.EMAIL,
-                        pass: process.env.PASSWORD
-                    },
-                    tls: {
-                        rejectUnauthorized: false
-                    }
+
+        jwt.sign({ email: email }, process.env.JWTSECRET, { expiresIn: '1d' }, (err, token) => {
+            if (!err) {
+                res.json({
+                    token: token
                 });
-                jwt.sign({ email: email }, process.env.JWTSECRET, { expiresIn: '1d' }, (err, token) => {
-                    if (!err) {
-                        res.json({
-                            token: token
-                        });
-                        let mailOptions = {
-                            from: '"ACM-VIT Summer Bootcamp" <your@email.com>',
-                            to: email,
-                            subject: 'Email Confirmation',
-                            text: `Token: ${token}`,
-                            //html: output // html body
-                        };
-                        transporter.sendMail(mailOptions, (error, info) => {
-                            if (error) {
-                                return console.log(error);
-                            }
-                            console.log('Message sent: %s', info.messageId);
-                        });
+                let mailOptions = {
+                    from: '"ACM-VIT Summer Bootcamp" <your@email.com>', // sender address
+                    to: email, // list of receivers
+                    subject: 'Email Confirmation', // Subject line
+                    html: `Follow this link to confirm your email <br>
+                    <a href="http://localhost:3000/confirmation/${token}">Click here to Verify Email</a>`, // plain text body
+                };
+                transporter.sendMail(mailOptions, (error, info) => {
+                    if (error) {
+                        logger.error(`Error in sending mail: ${error}`);
                     }
+                    logger.info(`Message sent: ${info.messageId}`);
                 });
-            } catch (e) {
-                res.status(500).send(e);
-                console.log(e)
             }
-
-        })
+        });
+    } catch (e) {
+        res.status(500).send(e);
+        logger.error(e);
     }
 })
 
 app.listen(process.env.PORT, () => {
-    console.log(`Server Started on port ${process.env.PORT}`)
-})
+    console.log(`Server Started on port ${process.env.PORT}`);
+}) 
