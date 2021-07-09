@@ -32,69 +32,37 @@ const logger = winston.createLogger({
   ],
 });
 
-app.get('/confirmation/:token', async (req, res) => {
-  try {
-    const data = jwt.verify(req.params.token, process.env.JWTSECRET);
-    logger.info(`Data during confirmation: ${JSON.stringify(data)}`);
-    const { email } = data;
-    await Email.create({
-      email,
-    });
-    res.json({ msg: 'Email Successfully Added' });
-  } catch (e) {
-    res.json({ msg: 'error' });
-    logger.error(e);
-  }
-});
-
 app.post('/rsvp', (req, res) => {
-  try {
-    const email = req.body.email?.toString();
-    logger.info(`Email sent through body: ${email}`);
-
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL,
-        pass: process.env.PASSWORD,
-      },
-      // to enable localhost for now
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    jwt.sign(
-      { email },
-      process.env.JWTSECRET,
-      { expiresIn: '1d' },
-      (err, token) => {
-        if (!err) {
-          res.json({
-            token,
-          });
-          const mailOptions = {
-            from: '"ACM-VIT Summer Bootcamp" <your@email.com>', // sender address
-            to: email, // list of receivers
-            subject: 'Email Confirmation', // Subject line
-            html: `Follow this link to confirm your email <br>
-                    <a href="http://localhost:3000/confirmation/${token}">Click here to Verify Email</a>`, // plain text body
-          };
-          transporter.sendMail(mailOptions, (error, info) => {
-            if (error) {
-              logger.error(`Error in sending mail: ${error}`);
-            }
-            logger.info(`Message sent: ${info.messageId}`);
-          });
-        }
-      }
-    );
-  } catch (e) {
-    res.status(500).send(e);
-    logger.error(e);
+  if (!req.body.captcha) {
+    logger.error(`Captcha wasn't supplied in body`);
+    res.json({ success: false, msg: 'Capctha is not checked' });
   }
+  const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${req.body.captcha}`;
+  request(verifyUrl, (err, response, body) => {
+    if (err) {
+      logger.error(`Error During Captcha: ${err}`);
+    }
+    body = JSON.parse(body);
+    if (!body.success && body.success === undefined) {
+      return res.json({ success: false, msg: 'captcha verification failed' });
+    }
+    if (body.score < 0.5) {
+      return res.json({
+        success: false,
+        msg: 'you might be a bot, sorry!',
+      });
+    }
+    try {
+      const email = req.body.email?.toString();
+      logger.info(`Adding email to db, Email: ${email}`);
+      await Email.create({
+        email,
+      });     
+    } catch (e) {
+      res.status(500).send(e);
+      logger.error(`Error adding Email to db: ${e}`);
+    }
+  });
 });
 
 app.listen(process.env.PORT, () => {
