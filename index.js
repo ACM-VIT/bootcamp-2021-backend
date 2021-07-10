@@ -31,7 +31,7 @@ app.use(bodyParser.json());
 app.post('/rsvp', async (req, res) => {
   if (!req.body.captcha) {
     logger.error(`Captcha wasn't supplied in body`);
-    return res.json({ success: false, msg: 'Capctha is not checked' });
+    return res.json({ success: false, msg: 'Captcha is not checked.' });
   }
 
   const verifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${req.body.captcha}`;
@@ -41,13 +41,13 @@ app.post('/rsvp', async (req, res) => {
 
     if (!data.success || data.success === undefined) {
       logger.warn(`Captcha verification failed: ${JSON.stringify(data)}`);
-      return res.json({ success: false, msg: 'captcha verification failed' });
+      return res.json({ success: false, msg: 'Captcha verification failed.' });
     }
 
     if (data.score < 0.5) {
       return res.json({
         success: false,
-        msg: 'you might be a bot, sorry!',
+        msg: 'You might be a bot, sorry!',
       });
     }
 
@@ -58,10 +58,10 @@ app.post('/rsvp', async (req, res) => {
       await Email.create({ email });
     } catch (err) {
       logger.error(`Error adding email to db: ${err}`);
-      return res.json({ success: false, msg: 'email already in list' });
+      return res.json({ success: false, msg: 'Email already registered.' });
     }
 
-    return res.json({ success: true, msg: 'email added' });
+    return res.json({ success: true, msg: 'Email registered successfully.' });
   } catch (e) {
     logger.error(`Captcha verification failed: ${e}`);
   }
